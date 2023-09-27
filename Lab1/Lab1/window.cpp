@@ -288,7 +288,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
     case WM_TIMER:
         // ѕровер€ем победу каждые 100 миллисекунд
         CheckForWin();
-        break;
+        break;  
     case WM_PAINT: {
         PAINTSTRUCT ps;
         HDC hdc = BeginPaint(hWnd, &ps);
