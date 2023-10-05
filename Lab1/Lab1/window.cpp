@@ -3,6 +3,12 @@
 #include <ctime>
 #include <sstream>
 #include <stack>
+#include <gdiplus.h>
+#include "window.h"
+#include <fstream>
+using namespace std;
+#pragma comment (lib, "Gdiplus.lib")
+using namespace Gdiplus;
 
 #define ID_BUTTON_ENDGAME 1001
 #define ID_BUTTON_NEWGAME 1002
@@ -24,11 +30,13 @@ bool gameOver = false; // Флаг, указывающий на завершение игры
 int numMines = 20; // Количество мин на поле
 int flagsPlaced = 0; // Количество установленных флагов
 bool** flags = nullptr; // Массив для отслеживания установленных флагов
-bool revealMinesAlways = false; // Переменная для определения, всегда ли отображать черные клетки
+bool revealMinesAlways = true; // Переменная для определения, всегда ли отображать черные клетки
 int remainingFlags = numMines; // Счетчик оставшихся флагов
 UINT_PTR timerID = 1; // Идентификатор таймера
 const UINT timerInterval = 100; // Интервал таймера в миллисекундах (100 миллисекунд)
-
+HBITMAP hFlagBitmap = nullptr;
+bool isExitButtonHovered = false;
+bool isNewGameButtonHovered = false;
 
 // Генерирует случайные черные точки на поле
 void GenerateRandomBoard() {
@@ -280,15 +288,13 @@ void ResetGame() {
     InvalidateRect(hWndMain, NULL, TRUE);
 }
 
-
-
 // Функция обработки сообщений окна
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
     switch (message) {
     case WM_TIMER:
         // Проверяем победу каждые 100 миллисекунд
         CheckForWin();
-        break;  
+        break;
     case WM_PAINT: {
         PAINTSTRUCT ps;
         HDC hdc = BeginPaint(hWnd, &ps);
@@ -323,15 +329,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
         case ID_BUTTON_NEWGAME:
             // Обработка нажатия кнопки "Новая игра"
             ResetGame();
-            gameOver = false; 
-            EnableWindow(hWndButtonEndGame, FALSE); 
-            EnableWindow(hWndButtonNewGame, FALSE); 
+            gameOver = false;
             break;
         }
         break;
     case WM_CREATE:
-        EnableWindow(hWndButtonEndGame, FALSE);
-        EnableWindow(hWndButtonNewGame, FALSE);
         break;
     case WM_LBUTTONDOWN:
         if (!gameOver) {
@@ -369,7 +371,49 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             }
         }
         break;
+    case WM_DRAWITEM: {
+        LPDRAWITEMSTRUCT lpDIS = (LPDRAWITEMSTRUCT)lParam;
+        HDC hdcButton = lpDIS->hDC;
 
+        if (lpDIS->CtlID == ID_BUTTON_ENDGAME) {
+            // Рисуем кнопку "Завершить игру" с красным фоном
+            HBRUSH hRedBrush = CreateSolidBrush(RGB(255, 0, 0)); // Желаемый цвет фона
+            FillRect(hdcButton, &lpDIS->rcItem, hRedBrush); // Закрашиваем фон красным цветом
+
+            HFONT hFont = CreateFont(20, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
+                CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("Arial"));
+            HFONT hOldFont = (HFONT)SelectObject(hdcButton, hFont);
+
+            // Рисуем текст на кнопке (вы можете использовать функции TextOut или DrawText)
+            SetTextColor(hdcButton, RGB(200, 162, 200)); // Устанавливаем цвет текста
+            SetBkMode(hdcButton, TRANSPARENT); // Устанавливаем прозрачный фон текста
+            // Рисуем текст в центре кнопки
+            RECT textRect = lpDIS->rcItem;
+            DrawText(hdcButton, _T("Завершить игру"), -1, &textRect, DT_SINGLELINE | DT_CENTER | DT_VCENTER);
+
+            // Освобождаем созданную кисть
+            DeleteObject(hRedBrush);
+        }
+        else if (lpDIS->CtlID == ID_BUTTON_NEWGAME) {
+            // Рисуем кнопку "Новая игра" с другим цветом фона (по аналогии)
+            HBRUSH hBlueBrush = CreateSolidBrush(RGB(0, 0, 255)); // Желаемый цвет фона
+            FillRect(hdcButton, &lpDIS->rcItem, hBlueBrush); // Закрашиваем фон синим цветом
+
+            HFONT hFont = CreateFont(20, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
+                CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("Arial"));
+            HFONT hOldFont = (HFONT)SelectObject(hdcButton, hFont);
+
+            // Рисуем текст на кнопке (по аналогии)
+            SetTextColor(hdcButton, RGB(200, 162, 200)); // Устанавливаем цвет текста
+            SetBkMode(hdcButton, TRANSPARENT); // Устанавливаем прозрачный фон текста
+            RECT textRect = lpDIS->rcItem;
+            DrawText(hdcButton, _T("Новая игра"), -1, &textRect, DT_SINGLELINE | DT_CENTER | DT_VCENTER);
+
+            DeleteObject(hBlueBrush);
+        }
+
+        return TRUE;
+    }
     case WM_RBUTTONDOWN:
         if (!gameOver) {
             int x = LOWORD(lParam) / cellSize;
@@ -378,32 +422,31 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             // Проверяем, что нажатие произошло в пределах игрового поля
             if (x >= 0 && x < numCols && y >= 0 && y < numRows) {
                 // Если флаг уже установлен, убираем его и увеличиваем счетчик оставшихся флагов
-                if (flags[y][x]) {
-                    flags[y][x] = false;
-                    flagsPlaced--;
-                    remainingFlags++;
-                }
-                // Иначе устанавливаем флаг и уменьшаем счетчик оставшихся флагов
-                else if (flagsPlaced < numMines && remainingFlags > 0) {
-                    flags[y][x] = true;
-                    flagsPlaced++;
-                    remainingFlags--;
-                }
+                if (!cellChecked[y][x]) {
+                    if (flags[y][x]) {
+                        flags[y][x] = false;
+                        flagsPlaced--;
+                        remainingFlags++;
+                    }
+                    else if (remainingFlags > 0) {
+                        flags[y][x] = true;
+                        flagsPlaced++;
+                        remainingFlags--;
+                    }
 
-                // Перерисовываем окно
-                InvalidateRect(hWnd, NULL, TRUE);
-
-                // Проверяем, выиграл ли игрок после каждого хода
-                if (flagsPlaced == numMines && CheckWin()) {
-                    MessageBox(hWnd, _T("Поздравляем! Вы выиграли!"), _T("Победа"), MB_OK | MB_ICONINFORMATION);
-                    gameOver = true; // Устанавливаем флаг "Game Over"
-                    EnableWindow(hWndButtonEndGame, TRUE); // Кнопка "Завершить игру" доступна
-                    EnableWindow(hWndButtonNewGame, TRUE); // Кнопка "Новая игра" доступна
+                    // Перерисовываем окно
+                    InvalidateRect(hWnd, NULL, TRUE);
                 }
+            }
+             // Проверяем, выиграл ли игрок после каждого хода
+            if (flagsPlaced == numMines && CheckWin()) {
+                MessageBox(hWnd, _T("Поздравляем! Вы выиграли!"), _T("Победа"), MB_OK | MB_ICONINFORMATION);
+                gameOver = true;
+                EnableWindow(hWndButtonEndGame, TRUE);
+                EnableWindow(hWndButtonNewGame, TRUE);
             }
         }
         break;
-
 
     default:
         return DefWindowProc(hWnd, message, wParam, lParam);
@@ -425,6 +468,13 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow) {
         cellCount[i] = new int[numCols]();
     }
 
+    HBITMAP hFlagBitmap = (HBITMAP)LoadImage(NULL, L"C:\\plusi\\img\\flag.bmp", IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
+    if (hFlagBitmap == NULL) {
+        // Обработайте ошибку загрузки изображения
+        MessageBox(hWndMain, L"Не удалось загрузить изображение", L"Ошибка", MB_ICONERROR);
+    }
+
+
     GenerateRandomBoard(); // Генерируем случайные черные точки
 
     timerID = SetTimer(hWndMain, 1, timerInterval, NULL);
@@ -439,11 +489,11 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow) {
 
 
     hWndButtonEndGame = CreateWindow(
-        _T("BUTTON"), _T("Завершить игру"), WS_CHILD | WS_VISIBLE,
+        _T("BUTTON"), _T(""), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
         10, numRows * cellSize + 40, 150, 40, hWndMain, (HMENU)ID_BUTTON_ENDGAME, hInstance, NULL);
 
     hWndButtonNewGame = CreateWindow(
-        _T("BUTTON"), _T("Новая игра"), WS_CHILD | WS_VISIBLE,
+        _T("BUTTON"), _T(""), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
         170, numRows * cellSize + 40, 150, 40, hWndMain, (HMENU)ID_BUTTON_NEWGAME, hInstance, NULL);
 
 
@@ -485,6 +535,10 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPTSTR lpCm
     if (!InitInstance(hInstance, nCmdShow)) {
         return FALSE;
     }
+
+    GdiplusStartupInput gdiplusStartupInput;
+    ULONG_PTR gdiplusToken;
+    GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, nullptr);
 
     // Основной цикл обработки сообщений
     MSG msg;
