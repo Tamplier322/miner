@@ -1,0 +1,7 @@
+C:\plusi\spot\spot\obj\Debug\net6.0\spot.GeneratedMSBuildEditorConfig.editorconfig
+C:\plusi\spot\spot\obj\Debug\net6.0\spot.AssemblyInfoInputs.cache
+C:\plusi\spot\spot\obj\Debug\net6.0\spot.AssemblyInfo.cs
+C:\plusi\spot\spot\obj\Debug\net6.0\spot.csproj.CoreCompileInputs.cache
+C:\plusi\spot\spot\obj\Debug\net6.0\spot.MvcApplicationPartsAssemblyInfo.cache
+C:\plusi\spot\spot\obj\Debug\net6.0\spot.RazorAssemblyInfo.cache
+C:\plusi\spot\spot\obj\Debug\net6.0\spot.RazorAssemblyInfo.cs

@@ -13,7 +13,18 @@ using namespace Gdiplus;
 #define ID_BUTTON_ENDGAME 1001
 #define ID_BUTTON_NEWGAME 1002
 
-// Глобальные переменные
+
+enum Difficulty { EASY, MEDIUM, HARD };
+Difficulty currentDifficulty = EASY;
+int selectedDifficulty = 0;
+
+
+HHOOK g_mouseHook = NULL;
+
+HWND hWndEasy;     
+HWND hWndMedium;
+HWND hWndHard;
+
 HINSTANCE hInst;
 HWND hWndMain;
 HWND hWndButtonEndGame;
@@ -39,11 +50,10 @@ bool isExitButtonHovered = false;
 bool isNewGameButtonHovered = false;
 
 // Генерирует случайные черные точки на поле
-void GenerateRandomBoard() {
+void GenerateRandomBoard(int numBlackPoints) {
     srand(static_cast<unsigned int>(time(nullptr))); // Инициализируем генератор случайных чисел текущим временем
 
     // Заполняем поле случайными черными точками и подсчитываем белые клетки
-    int numBlackPoints = 20; // Задаем количество черных точек
     totalWhiteCells = numRows * numCols - numBlackPoints;
 
     // Инициализируем массивы
@@ -146,12 +156,12 @@ void DrawBoard(HDC hdc) {
     // Отрисовываем счетчик белых клеток
     std::wstringstream ss;
     ss << L"Белых клеток: " << score;
-    TextOut(hdc, 10, numRows * cellSize + 10, ss.str().c_str(), static_cast<int>(ss.str().length()));
+    TextOut(hdc, 610, 90, ss.str().c_str(), static_cast<int>(ss.str().length()));
 
     // Отрисовываем счетчик оставшихся флагов
     std::wstringstream flagsCounter;
     flagsCounter << L"Оставшиеся флаги: " << remainingFlags;
-    TextOut(hdc, 200, numRows * cellSize + 10, flagsCounter.str().c_str(), static_cast<int>(flagsCounter.str().length()));
+    TextOut(hdc, 760, 90, flagsCounter.str().c_str(), static_cast<int>(flagsCounter.str().length()));
 
 }
 
@@ -190,6 +200,50 @@ void CheckForWin() {
             EnableWindow(hWndButtonEndGame, TRUE); 
             EnableWindow(hWndButtonNewGame, TRUE); 
         }
+    }
+}
+
+bool IsInImageArea(POINT pt) {
+    int imageX = 650;
+    int imageY = 150;
+    int imageWidth = 180;
+    int imageHeight = 180;
+
+    // Проверяем, попадает ли точка в область изображения
+    if (pt.x >= imageX && pt.x <= imageX + imageWidth && pt.y >= imageY && pt.y <= imageY + imageHeight) {
+        return true;
+    }
+
+    return false;
+}
+
+LRESULT CALLBACK MouseHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
+    if (nCode == HC_ACTION) {
+        MOUSEHOOKSTRUCT* pMouseStruct = (MOUSEHOOKSTRUCT*)lParam;
+
+        if (pMouseStruct != NULL && wParam == WM_LBUTTONDOWN) {
+            // Проверяем, был ли клик выполнен в области изображения
+            if (IsInImageArea(pMouseStruct->pt)) {
+                // Если клик был в области изображения, выведите текст в окне
+                MessageBox(NULL, _T("Нажатие на изображение!"), _T("Информация"), MB_OK | MB_ICONINFORMATION);
+            }
+        }
+    }
+
+    // Передаем управление следующему обработчику в цепочке
+    return CallNextHookEx(g_mouseHook, nCode, wParam, lParam);
+}
+
+bool SetMouseHook() {
+    g_mouseHook = SetWindowsHookEx(WH_MOUSE_LL, MouseHookProc, GetModuleHandle(NULL), 0);
+    return g_mouseHook != NULL;
+}
+
+// Функция для удаления глобального хука
+void UnhookMouse() {
+    if (g_mouseHook != NULL) {
+        UnhookWindowsHookEx(g_mouseHook);
+        g_mouseHook = NULL;
     }
 }
 
@@ -247,19 +301,18 @@ void SpreadZeros(int x, int y) {
     }
 }
 
-
 void ResetGame() {
-    // Освобождаем память для массивов cellClicked, cellChecked и cellCount
-    for (int i = 0; i < numRows; i++) {
-        delete[] cellClicked[i];
-        delete[] cellChecked[i];
-        delete[] cellCount[i];
+    // Освобождаем память для массивов cellClicked, cellChecked, cellCount и flags
+    if (cellClicked != nullptr) {
+        delete[] cellClicked;
+        delete[] cellChecked;
+        delete[] cellCount;
     }
-    delete[] cellClicked;
-    delete[] cellChecked;
-    delete[] cellCount;
 
-    // Инициализируем новую игру
+    if (flags != nullptr) {
+        delete[] flags;
+    }
+
     cellClicked = new bool* [numRows];
     cellChecked = new bool* [numRows];
     cellCount = new int* [numRows];
@@ -269,28 +322,31 @@ void ResetGame() {
         cellCount[i] = new int[numCols]();
     }
 
-    GenerateRandomBoard(); // Генерируем случайные черные точки
+    GenerateRandomBoard(numMines); // Генерируем случайные черные точки
     score = 0; // Сбрасываем счетчик белых клеток
 
-    // Освобождаем память для массива flags и инициализируем его заново
-    for (int i = 0; i < numRows; i++) {
-        delete[] flags[i];
-    }
-    delete[] flags;
-
+    // Инициализируем массив flags заново
     flags = new bool* [numRows];
     for (int i = 0; i < numRows; i++) {
         flags[i] = new bool[numCols]();
     }
-    flagsPlaced = 0; 
+    flagsPlaced = 0;
     remainingFlags = numMines;
     // Перерисовываем окно
     InvalidateRect(hWndMain, NULL, TRUE);
 }
 
+
 // Функция обработки сообщений окна
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
+    
+    GdiplusStartupInput gdiplusStartupInput;
+    ULONG_PTR gdiplusToken;
+    GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
+    
     switch (message) {
+    case WM_CREATE:
+        break;
     case WM_TIMER:
         // Проверяем победу каждые 100 миллисекунд
         CheckForWin();
@@ -302,10 +358,21 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
         // Отрисовываем игровое поле
         DrawBoard(hdc);
 
+        // Создаем объект Graphics и загружаем изображение
+        Graphics graphics(hdc);
+        Bitmap bmp(L"C:\\plusi\\img\\mine.png");
+
+        int x = 610; // X-координата
+        int y = 150; // Y-координата
+        int width = bmp.GetWidth(); // Ширина изображения
+        int height = bmp.GetHeight(); // Высота изображения
+
+        // Выводим изображение на экран
+        graphics.DrawImage(&bmp, x, y, width, height);
+
         EndPaint(hWnd, &ps);
         break;
     }
-
     case WM_DESTROY:
         // Освобождаем память для массивов cellClicked, cellChecked и cellCount
         for (int i = 0; i < numRows; i++) {
@@ -319,6 +386,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 
         KillTimer(hWnd, timerID);
         PostQuitMessage(0);
+        GdiplusShutdown(gdiplusToken);
+        PostQuitMessage(0);
         break;
     case WM_COMMAND:
         switch (LOWORD(wParam)) {
@@ -331,11 +400,37 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             ResetGame();
             gameOver = false;
             break;
+        case ID_DIFFICULTY_EASY:
+            CheckRadioButton(hWndMain, ID_DIFFICULTY_EASY, ID_DIFFICULTY_HARD, ID_DIFFICULTY_EASY);
+            numRows = 10;
+            numCols = 10;
+            numMines = 20;
+            ResetGame();
+            break;
+        case ID_DIFFICULTY_MEDIUM:
+            CheckRadioButton(hWndMain, ID_DIFFICULTY_EASY, ID_DIFFICULTY_HARD, ID_DIFFICULTY_MEDIUM);
+            numRows = 15;
+            numCols = 15;
+            numMines = 35;
+            ResetGame();
+            break;
+        case ID_DIFFICULTY_HARD:
+            CheckRadioButton(hWndMain, ID_DIFFICULTY_EASY, ID_DIFFICULTY_HARD, ID_DIFFICULTY_HARD);
+            numRows = 20;
+            numCols = 20;
+            numMines = 50;
+            ResetGame();
+            break;
         }
         break;
-    case WM_CREATE:
-        break;
     case WM_LBUTTONDOWN:
+        POINT pt;
+        pt.x = LOWORD(lParam);
+        pt.y = HIWORD(lParam);
+        if (IsInImageArea(pt)) {
+            MessageBox(hWnd, L"Нажатие на изображение!", L"Информация", MB_OK | MB_ICONINFORMATION);
+        }
+        break;
         if (!gameOver) {
             int x = LOWORD(lParam) / cellSize;
             int y = HIWORD(lParam) / cellSize;
@@ -376,7 +471,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
         HDC hdcButton = lpDIS->hDC;
 
         if (lpDIS->CtlID == ID_BUTTON_ENDGAME) {
-            // Рисуем кнопку "Завершить игру" с красным фоном
             HBRUSH hRedBrush = CreateSolidBrush(RGB(255, 0, 0)); // Желаемый цвет фона
             FillRect(hdcButton, &lpDIS->rcItem, hRedBrush); // Закрашиваем фон красным цветом
 
@@ -384,10 +478,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
                 CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("Arial"));
             HFONT hOldFont = (HFONT)SelectObject(hdcButton, hFont);
 
-            // Рисуем текст на кнопке (вы можете использовать функции TextOut или DrawText)
             SetTextColor(hdcButton, RGB(200, 162, 200)); // Устанавливаем цвет текста
             SetBkMode(hdcButton, TRANSPARENT); // Устанавливаем прозрачный фон текста
-            // Рисуем текст в центре кнопки
             RECT textRect = lpDIS->rcItem;
             DrawText(hdcButton, _T("Завершить игру"), -1, &textRect, DT_SINGLELINE | DT_CENTER | DT_VCENTER);
 
@@ -395,7 +487,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             DeleteObject(hRedBrush);
         }
         else if (lpDIS->CtlID == ID_BUTTON_NEWGAME) {
-            // Рисуем кнопку "Новая игра" с другим цветом фона (по аналогии)
             HBRUSH hBlueBrush = CreateSolidBrush(RGB(0, 0, 255)); // Желаемый цвет фона
             FillRect(hdcButton, &lpDIS->rcItem, hBlueBrush); // Закрашиваем фон синим цветом
 
@@ -403,7 +494,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
                 CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, _T("Arial"));
             HFONT hOldFont = (HFONT)SelectObject(hdcButton, hFont);
 
-            // Рисуем текст на кнопке (по аналогии)
             SetTextColor(hdcButton, RGB(200, 162, 200)); // Устанавливаем цвет текста
             SetBkMode(hdcButton, TRANSPARENT); // Устанавливаем прозрачный фон текста
             RECT textRect = lpDIS->rcItem;
@@ -447,10 +537,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             }
         }
         break;
-
+    
     default:
         return DefWindowProc(hWnd, message, wParam, lParam);
     }
+
     return 0;
 }
 
@@ -468,14 +559,8 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow) {
         cellCount[i] = new int[numCols]();
     }
 
-    HBITMAP hFlagBitmap = (HBITMAP)LoadImage(NULL, L"C:\\plusi\\img\\flag.bmp", IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
-    if (hFlagBitmap == NULL) {
-        // Обработайте ошибку загрузки изображения
-        MessageBox(hWndMain, L"Не удалось загрузить изображение", L"Ошибка", MB_ICONERROR);
-    }
 
-
-    GenerateRandomBoard(); // Генерируем случайные черные точки
+    GenerateRandomBoard(numMines); // Генерируем случайные черные точки
 
     timerID = SetTimer(hWndMain, 1, timerInterval, NULL);
     if (timerID == 0) {
@@ -485,17 +570,28 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow) {
 
     hWndMain = CreateWindow(
         _T("SapperApp"), _T("Сапер"), WS_OVERLAPPEDWINDOW,
-        CW_USEDEFAULT, CW_USEDEFAULT, static_cast<int>(numCols * cellSize * 1.5) + 20, numRows * cellSize + 120, NULL, NULL, hInstance, NULL);
+        CW_USEDEFAULT, CW_USEDEFAULT, static_cast<int>(numCols * cellSize * 1.5) + 500, numRows * cellSize + 600, NULL, NULL, hInstance, NULL);
 
 
     hWndButtonEndGame = CreateWindow(
-        _T("BUTTON"), _T(""), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
-        10, numRows * cellSize + 40, 150, 40, hWndMain, (HMENU)ID_BUTTON_ENDGAME, hInstance, NULL);
+        _T("BUTTON"), _T("Завершить игру"), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
+        610, 10, 150, 40, hWndMain, (HMENU)ID_BUTTON_ENDGAME, hInstance, NULL);
 
     hWndButtonNewGame = CreateWindow(
-        _T("BUTTON"), _T(""), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
-        170, numRows * cellSize + 40, 150, 40, hWndMain, (HMENU)ID_BUTTON_NEWGAME, hInstance, NULL);
+        _T("BUTTON"), _T("Новая игра"), WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
+        770, 10, 150, 40, hWndMain, (HMENU)ID_BUTTON_NEWGAME, hInstance, NULL);
 
+    HWND hWndEasy = CreateWindow(
+        _T("BUTTON"), _T("Легко"), WS_CHILD | WS_VISIBLE | BS_RADIOBUTTON,
+        610, 60, 80, 20, hWndMain, (HMENU)ID_DIFFICULTY_EASY, hInstance, NULL);
+
+    HWND hWndMedium = CreateWindow(
+        _T("BUTTON"), _T("Средне"), WS_CHILD | WS_VISIBLE | BS_RADIOBUTTON,
+        700, 60, 80, 20, hWndMain, (HMENU)ID_DIFFICULTY_MEDIUM, hInstance, NULL);
+
+    HWND hWndHard = CreateWindow(
+        _T("BUTTON"), _T("Сложно"), WS_CHILD | WS_VISIBLE | BS_RADIOBUTTON,
+        790, 60, 80, 20, hWndMain, (HMENU)ID_DIFFICULTY_HARD, hInstance, NULL);
 
     if (!hWndMain) {
         return FALSE;
