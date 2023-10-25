@@ -120,7 +120,6 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         UpdateMemoryInfo(hListBox);
 
         CreateWindow(L"BUTTON", L"Обновить", WS_CHILD | WS_VISIBLE, 430, 10, 100, 25, hwnd, (HMENU)2, NULL, NULL);
-        CreateWindow(L"BUTTON", L"Завершить процесс", WS_CHILD | WS_VISIBLE, 220, 10, 200, 25, hwnd, (HMENU)3, NULL, NULL);
         CreateWindow(L"BUTTON", L"Записать в файл", WS_CHILD | WS_VISIBLE, 10, 10, 200, 25, hwnd, (HMENU)4, NULL, NULL);
         break;
 
