@@ -1,0 +1,13 @@
+﻿  mainfile.cpp
+C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.37.32822\include\utility(270,61): warning C4244: инициализация: преобразование "_Ty" в "_Ty2", возможна потеря данных
+          with
+          [
+              _Ty=unsigned __int64
+          ]
+          and
+          [
+              _Ty2=DWORD
+          ]
+C:\plusi\Lab3\Lab3\mainfile.cpp(58,57): message : выполняется компиляция ссылки на экземпляр шаблон функции "std::pair<std::wstring,DWORD>::pair<TCHAR*,unsigned __int64,0>(std::pair<TCHAR *,unsigned __int64> &&) noexcept(false)"
+C:\plusi\Lab3\Lab3\mainfile.cpp(58,42): message : см. первую ссылку на "std::pair<std::wstring,DWORD>::pair" в "UpdateMemoryInfo"
+  Lab3.vcxproj -> C:\plusi\Lab3\x64\Debug\Lab3.exe

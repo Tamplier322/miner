@@ -430,7 +430,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
         if (IsInImageArea(pt)) {
             MessageBox(hWnd, L"Нажатие на изображение!", L"Информация", MB_OK | MB_ICONINFORMATION);
         }
-        break;
         if (!gameOver) {
             int x = LOWORD(lParam) / cellSize;
             int y = HIWORD(lParam) / cellSize;
